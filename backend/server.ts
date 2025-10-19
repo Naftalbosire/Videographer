@@ -1,6 +1,10 @@
 
-// FIX: Use a default import for express and aliased named imports for types to avoid clashes with global types.
-import express, { Request as ExpressRequest, Response as ExpressResponse, NextFunction } from 'express';
+
+
+// FIX: Using named imports for Request, Response, and NextFunction can interfere with TypeScript's
+// module augmentation (e.g., from express-session). Using types from the default express export
+// (express.Request, etc.) ensures that augmented types are correctly recognized.
+import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -13,11 +17,27 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5001;
 
+// Define a whitelist of allowed origins
+const whitelist = [
+    'http://localhost:3000', // Create React App default
+    'http://localhost:5173', // Vite default
+    'http://127.0.0.1:5173', // Vite alternate
+];
+// TODO: Add your deployed frontend URL to the whitelist for production
+// if (process.env.NODE_ENV === 'production') {
+//     whitelist.push('YOUR_DEPLOYED_FRONTEND_URL');
+// }
+
 // Middleware
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? 'YOUR_DEPLOYED_FRONTEND_URL' // TODO: Replace with your actual frontend URL
-    : 'http://localhost:3000', // Or your local dev port
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin || whitelist.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true
 }));
 app.use(express.json());
@@ -74,7 +94,7 @@ const Project = mongoose.model('Project', projectSchema);
 // --- API Routes ---
 
 // Public route to get all projects
-app.get('/api/projects', async (req: ExpressRequest, res: ExpressResponse) => {
+app.get('/api/projects', async (req: express.Request, res: express.Response) => {
   try {
     const projects = await Project.find().sort({ year: -1 });
     res.json(projects);
@@ -91,7 +111,7 @@ if (!ADMIN_PASSWORD) {
 }
 
 // SECURE: Middleware to check for an active admin session
-const authMiddleware = (req: ExpressRequest, res: ExpressResponse, next: NextFunction) => {
+const authMiddleware = (req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (req.session && req.session.isAdmin) {
         next();
     } else {
@@ -100,7 +120,7 @@ const authMiddleware = (req: ExpressRequest, res: ExpressResponse, next: NextFun
 };
 
 // Route to verify password and create a session
-app.post('/api/admin/login', (req: ExpressRequest, res: ExpressResponse) => {
+app.post('/api/admin/login', (req: express.Request, res: express.Response) => {
     const { password } = req.body;
     if (password === ADMIN_PASSWORD) {
         req.session.isAdmin = true; // Set the session
@@ -111,7 +131,7 @@ app.post('/api/admin/login', (req: ExpressRequest, res: ExpressResponse) => {
 });
 
 // Route to check login status
-app.get('/api/admin/status', (req: ExpressRequest, res: ExpressResponse) => {
+app.get('/api/admin/status', (req: express.Request, res: express.Response) => {
     if (req.session && req.session.isAdmin) {
         res.status(200).json({ loggedIn: true });
     } else {
@@ -120,7 +140,7 @@ app.get('/api/admin/status', (req: ExpressRequest, res: ExpressResponse) => {
 });
 
 // Route to destroy the session (logout)
-app.post('/api/admin/logout', (req: ExpressRequest, res: ExpressResponse) => {
+app.post('/api/admin/logout', (req: express.Request, res: express.Response) => {
     req.session.destroy(err => {
         if (err) {
             return res.status(500).json({ message: 'Could not log out, please try again.' });
@@ -132,7 +152,7 @@ app.post('/api/admin/logout', (req: ExpressRequest, res: ExpressResponse) => {
 
 
 // Protected route to add a new project
-app.post('/api/projects', authMiddleware, async (req: ExpressRequest, res: ExpressResponse) => {
+app.post('/api/projects', authMiddleware, async (req: express.Request, res: express.Response) => {
   try {
     const newProject = new Project(req.body);
     await newProject.save();
@@ -143,7 +163,7 @@ app.post('/api/projects', authMiddleware, async (req: ExpressRequest, res: Expre
 });
 
 // Protected route to update a project
-app.put('/api/projects/:id', authMiddleware, async (req: ExpressRequest, res: ExpressResponse) => {
+app.put('/api/projects/:id', authMiddleware, async (req: express.Request, res: express.Response) => {
   try {
     const updatedProject = await Project.findByIdAndUpdate(req.params.id, req.body, { new: true });
     if (!updatedProject) {
@@ -156,7 +176,7 @@ app.put('/api/projects/:id', authMiddleware, async (req: ExpressRequest, res: Ex
 });
 
 // Protected route to delete a project
-app.delete('/api/projects/:id', authMiddleware, async (req: ExpressRequest, res: ExpressResponse) => {
+app.delete('/api/projects/:id', authMiddleware, async (req: express.Request, res: express.Response) => {
   try {
     const deletedProject = await Project.findByIdAndDelete(req.params.id);
     if (!deletedProject) {
@@ -166,12 +186,6 @@ app.delete('/api/projects/:id', authMiddleware, async (req: ExpressRequest, res:
   } catch (error) {
     res.status(500).json({ message: 'Error deleting project', error });
   }
-});
-
-// Serve frontend in production
-app.use(express.static(path.join(__dirname, '..', 'build')));
-app.get('*', (req: ExpressRequest, res: ExpressResponse) => {
-  res.sendFile(path.resolve(__dirname, '..', 'build', 'index.html'));
 });
 
 app.listen(PORT, () => {
