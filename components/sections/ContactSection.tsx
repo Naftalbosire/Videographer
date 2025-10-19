@@ -22,11 +22,11 @@ const ContactSection: React.FC = () => {
 
           {/* Email */}
           <a
-            href="mailto:lucykadii@gmail.com"
+            href="mailto:lucyshoka3@gmail.com"
             className="flex items-center space-x-3 text-gray-300 hover:text-white transition-all duration-300 hover:scale-105"
           >
             <Mail size={22} />
-            <span className="text-lg">lucykadii3@gmail.com</span>
+            <span className="text-lg">lucyshoka3@gmail.com</span>
           </a>
 
           {/* Instagram */}
