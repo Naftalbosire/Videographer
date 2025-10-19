@@ -7,12 +7,14 @@ const AboutSection: React.FC = () => {
         <div className="flex flex-col lg:flex-row items-center gap-12">
           <div className="lg:w-1/3 w-full">
             <div className="aspect-square bg-black rounded-lg overflow-hidden shadow-2xl shadow-black/50">
-              <img 
+            <img src="/Me.jpeg" alt="Lucy Kadii" />
+
+              {/* <img 
                 src="components\sections\assets\Me.jpeg" 
                 // src="components\sections\assets\me.mp4"
                 alt="Lucy Kadii" 
                 className="w-full h-full object-cover"
-              />
+              /> */}
             </div>
           </div>
           <div className="lg:w-2/3 w-full">
