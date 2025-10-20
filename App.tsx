@@ -10,6 +10,8 @@ import AdminModal from './components/AdminModal';
 import { Section, Project } from './types';
 import AnimatedSection from './components/AnimatedSection';
 
+const BACKEND_URL = "https://videographer.onrender.com"; // <- Added backend URL
+
 const App: React.FC = () => {
   const [activeSection, setActiveSection] = useState<Section>(Section.Home);
   const [isScrolled, setIsScrolled] = useState(false);
@@ -31,10 +33,8 @@ const App: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetch('/api/projects');
-      if (!response.ok) {
-        throw new Error('Network response was not ok');
-      }
+      const response = await fetch(`${BACKEND_URL}/api/projects`); // <- Updated
+      if (!response.ok) throw new Error('Network response was not ok');
       const data: Project[] = await response.json();
       setProjects(data);
     } catch (err) {
@@ -46,15 +46,11 @@ const App: React.FC = () => {
 
   const checkLoginStatus = async () => {
     try {
-        const response = await fetch('/api/admin/status', {
-            credentials: 'include',
-        });
-        const data = await response.json();
-        if (data.loggedIn) {
-            setIsAdminUnlocked(true);
-        }
+      const response = await fetch(`${BACKEND_URL}/api/admin/status`, { credentials: 'include' }); // <- Updated
+      const data = await response.json();
+      if (data.loggedIn) setIsAdminUnlocked(true);
     } catch (e) {
-        console.error("Could not verify login status", e);
+      console.error("Could not verify login status", e);
     }
   };
 
@@ -66,7 +62,6 @@ const App: React.FC = () => {
   useEffect(() => {
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 50);
-
       const scrollPosition = window.scrollY + window.innerHeight / 2;
 
       Object.entries(sectionRefs).forEach(([section, ref]) => {
@@ -80,29 +75,19 @@ const App: React.FC = () => {
     };
 
     window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => {
-      window.removeEventListener('scroll', handleScroll);
-    };
+    return () => window.removeEventListener('scroll', handleScroll);
   }, [sectionRefs]);
 
   const handleNavClick = (section: Section) => {
-    sectionRefs[section].current?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'start',
-    });
+    sectionRefs[section].current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
   
-  const handleAdminUnlock = () => {
-    setIsAdminOpen(true);
-  };
-  
-  const handleAdminClose = () => {
-    setIsAdminOpen(false);
-  };
+  const handleAdminUnlock = () => setIsAdminOpen(true);
+  const handleAdminClose = () => setIsAdminOpen(false);
 
   const handleLogin = async (password: string): Promise<boolean> => {
     try {
-      const response = await fetch('/api/admin/login', {
+      const response = await fetch(`${BACKEND_URL}/api/admin/login`, { // <- Updated
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -121,26 +106,18 @@ const App: React.FC = () => {
 
   const handleLogout = async () => {
     try {
-        await fetch('/api/admin/logout', { 
-            method: 'POST',
-            credentials: 'include' 
-        });
+      await fetch(`${BACKEND_URL}/api/admin/logout`, { method: 'POST', credentials: 'include' }); // <- Updated
     } finally {
-        setIsAdminUnlocked(false);
-        setIsAdminOpen(false);
+      setIsAdminUnlocked(false);
+      setIsAdminOpen(false);
     }
   };
 
-
-  const renderSection = (section: Section, content: React.ReactNode) => {
-    return (
-      <div ref={sectionRefs[section]} id={section.toLowerCase()}>
-        <AnimatedSection>
-          {content}
-        </AnimatedSection>
-      </div>
-    );
-  };
+  const renderSection = (section: Section, content: React.ReactNode) => (
+    <div ref={sectionRefs[section]} id={section.toLowerCase()}>
+      <AnimatedSection>{content}</AnimatedSection>
+    </div>
+  );
 
   return (
     <div className="bg-[#0a0a0a] text-white font-sans antialiased">
