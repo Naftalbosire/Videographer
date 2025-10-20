@@ -10,7 +10,7 @@ import AdminModal from './components/AdminModal';
 import { Section, Project } from './types';
 import AnimatedSection from './components/AnimatedSection';
 
-const BACKEND_URL = "https://videographer.onrender.com"; // <- Added backend URL
+const BACKEND_URL = "https://videographer.onrender.com";
 
 const App: React.FC = () => {
   const [activeSection, setActiveSection] = useState<Section>(Section.Home);
@@ -33,12 +33,11 @@ const App: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${BACKEND_URL}/api/projects`); // <- Updated
-      if (!response.ok) throw new Error('Network response was not ok');
-      const data: Project[] = await response.json();
+      const res = await fetch(`${BACKEND_URL}/api/projects`);
+      const data: Project[] = await res.json();
       setProjects(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An unknown error occurred');
+      setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setIsLoading(false);
     }
@@ -46,8 +45,8 @@ const App: React.FC = () => {
 
   const checkLoginStatus = async () => {
     try {
-      const response = await fetch(`${BACKEND_URL}/api/admin/status`, { credentials: 'include' }); // <- Updated
-      const data = await response.json();
+      const res = await fetch(`${BACKEND_URL}/api/admin/status`, { credentials: 'include' });
+      const data = await res.json();
       if (data.loggedIn) setIsAdminUnlocked(true);
     } catch (e) {
       console.error("Could not verify login status", e);
@@ -63,7 +62,6 @@ const App: React.FC = () => {
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 50);
       const scrollPosition = window.scrollY + window.innerHeight / 2;
-
       Object.entries(sectionRefs).forEach(([section, ref]) => {
         if (ref.current) {
           const { offsetTop, offsetHeight } = ref.current;
@@ -73,60 +71,47 @@ const App: React.FC = () => {
         }
       });
     };
-
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
   }, [sectionRefs]);
 
-  const handleNavClick = (section: Section) => {
-    sectionRefs[section].current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
-  
+  const handleNavClick = (section: Section) => sectionRefs[section].current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   const handleAdminUnlock = () => setIsAdminOpen(true);
   const handleAdminClose = () => setIsAdminOpen(false);
 
   const handleLogin = async (password: string): Promise<boolean> => {
     try {
-      const response = await fetch(`${BACKEND_URL}/api/admin/login`, { // <- Updated
+      const res = await fetch(`${BACKEND_URL}/api/admin/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ password }),
       });
-      if (response.ok) {
+      if (res.ok) {
         setIsAdminUnlocked(true);
         return true;
       }
       return false;
-    } catch (error) {
-      console.error('Password verification failed:', error);
+    } catch {
       return false;
     }
   };
 
   const handleLogout = async () => {
-    try {
-      await fetch(`${BACKEND_URL}/api/admin/logout`, { method: 'POST', credentials: 'include' }); // <- Updated
-    } finally {
+    try { await fetch(`${BACKEND_URL}/api/admin/logout`, { method: 'POST', credentials: 'include' }); }
+    finally {
       setIsAdminUnlocked(false);
       setIsAdminOpen(false);
     }
   };
 
   const renderSection = (section: Section, content: React.ReactNode) => (
-    <div ref={sectionRefs[section]} id={section.toLowerCase()}>
-      <AnimatedSection>{content}</AnimatedSection>
-    </div>
+    <div ref={sectionRefs[section]} id={section.toLowerCase()}><AnimatedSection>{content}</AnimatedSection></div>
   );
 
   return (
     <div className="bg-[#0a0a0a] text-white font-sans antialiased">
-      <Header
-        activeSection={activeSection}
-        onNavClick={handleNavClick}
-        isScrolled={isScrolled}
-        onAdminUnlock={handleAdminUnlock}
-      />
+      <Header activeSection={activeSection} onNavClick={handleNavClick} isScrolled={isScrolled} onAdminUnlock={handleAdminUnlock}/>
       <main>
         {renderSection(Section.Home, <HomeSection />)}
         {renderSection(Section.Showreel, <ShowreelSection />)}
@@ -135,14 +120,7 @@ const App: React.FC = () => {
         {renderSection(Section.Contact, <ContactSection />)}
       </main>
       <Footer />
-      <AdminModal
-        isOpen={isAdminOpen}
-        onClose={handleAdminClose}
-        isUnlocked={isAdminUnlocked}
-        onLogin={handleLogin}
-        onLogout={handleLogout}
-        onProjectsUpdate={fetchProjects}
-      />
+      <AdminModal isOpen={isAdminOpen} onClose={handleAdminClose} isUnlocked={isAdminUnlocked} onLogin={handleLogin} onLogout={handleLogout} onProjectsUpdate={fetchProjects}/>
     </div>
   );
 };

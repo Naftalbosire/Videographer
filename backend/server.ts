@@ -2,9 +2,9 @@ import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import path from 'path';
 import session from 'express-session';
 import cookieParser from 'cookie-parser';
+import multer from 'multer';
 
 dotenv.config();
 console.log("Loaded ADMIN_PASSWORD:", process.env.ADMIN_PASSWORD ? "[DEFINED]" : "[NOT DEFINED]");
@@ -14,22 +14,21 @@ const PORT = process.env.PORT || 5001;
 
 // --- CORS Configuration ---
 const whitelist = [
-  'http://localhost:3000',      // Create React App default
-  'http://localhost:5173',      // Vite default
-  'http://127.0.0.1:5173',      // Vite alternate
-  'https://lucykadii.vercel.app' // Deployed frontend
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'https://lucykadii.vercel.app', // Deployed frontend
 ];
 
 app.use(cors({
   origin: function (origin, callback) {
-    // Allow requests with no origin (like Postman or curl)
     if (!origin || whitelist.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
     }
   },
-  credentials: true
+  credentials: true,
 }));
 
 // --- Middleware ---
@@ -49,13 +48,13 @@ app.use(session({
   saveUninitialized: false,
   cookie: {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production", // true in production
+    secure: process.env.NODE_ENV === "production",
     sameSite: process.env.NODE_ENV === "production" ? 'none' : 'lax',
-    maxAge: 1000 * 60 * 60 * 24 // 1 day
+    maxAge: 1000 * 60 * 60 * 24, // 1 day
   }
 }));
 
-// Extend Express Session type to include our custom property
+// Extend Express Session type
 declare module 'express-session' {
   interface SessionData {
     isAdmin?: boolean;
@@ -101,8 +100,11 @@ const authMiddleware = (req: express.Request, res: express.Response, next: expre
   }
 };
 
+// --- File Upload Setup ---
+const upload = multer({ dest: 'uploads/' });
+
 // --- Admin Routes ---
-app.post('/api/admin/login', (req: express.Request, res: express.Response) => {
+app.post('/api/admin/login', (req, res) => {
   const { password } = req.body;
   if (password === ADMIN_PASSWORD) {
     req.session.isAdmin = true;
@@ -112,26 +114,20 @@ app.post('/api/admin/login', (req: express.Request, res: express.Response) => {
   }
 });
 
-app.get('/api/admin/status', (req: express.Request, res: express.Response) => {
+app.get('/api/admin/status', (req, res) => {
   res.status(200).json({ loggedIn: !!(req.session && req.session.isAdmin) });
 });
 
-app.post('/api/admin/logout', (req: express.Request, res: express.Response) => {
+app.post('/api/admin/logout', (req, res) => {
   req.session.destroy(err => {
-    if (err) {
-      return res.status(500).json({ message: 'Could not log out, please try again.' });
-    }
-    res.clearCookie('connect.sid', {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: process.env.NODE_ENV === "production" ? 'none' : 'lax'
-    });
+    if (err) return res.status(500).json({ message: 'Could not log out' });
+    res.clearCookie('connect.sid', { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: process.env.NODE_ENV === "production" ? 'none' : 'lax' });
     res.status(200).json({ message: 'Logout successful' });
   });
 });
 
 // --- Public Routes ---
-app.get('/api/projects', async (req: express.Request, res: express.Response) => {
+app.get('/api/projects', async (req, res) => {
   try {
     const projects = await Project.find().sort({ year: -1 });
     res.json(projects);
@@ -141,7 +137,7 @@ app.get('/api/projects', async (req: express.Request, res: express.Response) => 
 });
 
 // --- Protected Project Routes ---
-app.post('/api/projects', authMiddleware, async (req: express.Request, res: express.Response) => {
+app.post('/api/projects', authMiddleware, async (req, res) => {
   try {
     const newProject = new Project(req.body);
     await newProject.save();
@@ -151,24 +147,20 @@ app.post('/api/projects', authMiddleware, async (req: express.Request, res: expr
   }
 });
 
-app.put('/api/projects/:id', authMiddleware, async (req: express.Request, res: express.Response) => {
+app.put('/api/projects/:id', authMiddleware, async (req, res) => {
   try {
     const updatedProject = await Project.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    if (!updatedProject) {
-      return res.status(404).json({ message: 'Project not found' });
-    }
+    if (!updatedProject) return res.status(404).json({ message: 'Project not found' });
     res.json(updatedProject);
   } catch (error) {
     res.status(400).json({ message: 'Error updating project', error });
   }
 });
 
-app.delete('/api/projects/:id', authMiddleware, async (req: express.Request, res: express.Response) => {
+app.delete('/api/projects/:id', authMiddleware, async (req, res) => {
   try {
     const deletedProject = await Project.findByIdAndDelete(req.params.id);
-    if (!deletedProject) {
-      return res.status(404).json({ message: 'Project not found' });
-    }
+    if (!deletedProject) return res.status(404).json({ message: 'Project not found' });
     res.json({ message: 'Project deleted successfully' });
   } catch (error) {
     res.status(500).json({ message: 'Error deleting project', error });
@@ -176,6 +168,4 @@ app.delete('/api/projects/:id', authMiddleware, async (req: express.Request, res
 });
 
 // --- Start Server ---
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
