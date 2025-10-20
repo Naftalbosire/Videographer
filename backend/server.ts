@@ -1,7 +1,9 @@
-// FIX: Add triple-slash directives to explicitly load type definitions for module augmentation.
-// FIX: Using named imports for Request, Response, and NextFunction can interfere with TypeScript's
-// module augmentation (e.g., from express-session). Using types from the default express export
-// (express.Request, etc.) ensures that augmented types are correctly recognized.
+// FIX: Add triple-slash reference directives to resolve module augmentation errors. This ensures
+// that types for express and express-session are loaded correctly, making the global Express
+// namespace available and allowing module augmentation for session data.
+/// <reference types="express" />
+/// <reference types="express-session" />
+
 import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
@@ -14,6 +16,15 @@ import multer from 'multer';
 import { CloudinaryStorage } from 'multer-storage-cloudinary';
 
 dotenv.config();
+
+// --- TYPE AUGMENTATION ---
+// This tells TypeScript to add the 'isAdmin' property to the SessionData interface.
+// This is the correct way to fix session-related type errors.
+declare module 'express-session' {
+  interface SessionData {
+    isAdmin?: boolean;
+  }
+}
 
 // --- CLOUDINARY CONFIGURATION ---
 cloudinary.config({
@@ -49,7 +60,7 @@ const whitelist = [
     'http://localhost:3000',
     'http://localhost:5173',
     'http://127.0.0.1:5173',
-    'https://lucykadii.vercel.app/',
+    'https://lucykadii.vercel.app', // FIX: Added deployed frontend URL to allow production access
 ];
 
 // Middleware
@@ -126,8 +137,7 @@ if (!ADMIN_PASSWORD) {
 }
 
 const authMiddleware = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    // FIX: Cast req.session to any to avoid type errors due to missing type definitions.
-    if (req.session && (req.session as any).isAdmin) {
+    if (req.session && req.session.isAdmin) {
         next();
     } else {
         res.status(401).json({ message: 'Unauthorized: You must be logged in.' });
@@ -137,8 +147,7 @@ const authMiddleware = (req: express.Request, res: express.Response, next: expre
 app.post('/api/admin/login', (req: express.Request, res: express.Response) => {
     const { password } = req.body;
     if (password === ADMIN_PASSWORD) {
-        // FIX: Cast req.session to any to avoid type errors due to missing type definitions.
-        (req.session as any).isAdmin = true;
+        req.session.isAdmin = true;
         res.status(200).json({ message: 'Login successful' });
     } else {
         res.status(401).json({ message: 'Incorrect password' });
@@ -146,8 +155,7 @@ app.post('/api/admin/login', (req: express.Request, res: express.Response) => {
 });
 
 app.get('/api/admin/status', (req: express.Request, res: express.Response) => {
-    // FIX: Cast req.session to any to avoid type errors due to missing type definitions.
-    if (req.session && (req.session as any).isAdmin) {
+    if (req.session && req.session.isAdmin) {
         res.status(200).json({ loggedIn: true });
     } else {
         res.status(200).json({ loggedIn: false });
@@ -168,8 +176,7 @@ app.post('/api/admin/logout', (req: express.Request, res: express.Response) => {
 // Protected route to add a new project with file uploads
 app.post('/api/projects', authMiddleware, uploadMedia, async (req: express.Request, res: express.Response) => {
   try {
-    // FIX: Cast req.files to any to avoid type errors due to missing type definitions.
-    const files = req.files as any;
+    const files = req.files as { [fieldname: string]: Express.Multer.File[] };
     const thumbnailUrl = files['thumbnail']?.[0]?.path;
     const videoUrl = files['video']?.[0]?.path;
 
@@ -199,8 +206,7 @@ app.put('/api/projects/:id', authMiddleware, uploadMedia, async (req: express.Re
         return res.status(404).json({ message: 'Project not found' });
     }
     
-    // FIX: Cast req.files to any to avoid type errors due to missing type definitions.
-    const files = req.files as any;
+    const files = req.files as { [fieldname: string]: Express.Multer.File[] };
     const updateData = { ...req.body };
     const filesToDelete = [];
 
@@ -282,6 +288,11 @@ app.delete('/api/projects/:id', authMiddleware, async (req: express.Request, res
     console.error("Error deleting project:", error)
     res.status(500).json({ message: 'Error deleting project', error });
   }
+});
+
+// FIX: Add a catch-all route for 404 errors to ensure JSON is always returned
+app.use((req, res, next) => {
+  res.status(404).json({ message: `API route not found: ${req.method} ${req.originalUrl}` });
 });
 
 app.listen(PORT, () => {
