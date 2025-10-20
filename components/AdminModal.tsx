@@ -86,26 +86,47 @@ const AdminModal: React.FC<AdminModalProps> = ({
     if (e.target.files && e.target.files[0]) setFile(e.target.files[0]);
   };
 
+  const uploadToCloudinary = async (file: File, type: 'image' | 'video') => {
+    const url = `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/${type}/upload`;
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('upload_preset', process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET || '');
+
+    const res = await fetch(url, { method: 'POST', body: formData });
+    const data = await res.json();
+    return data.secure_url;
+  };
+
   const handleProjectFormSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError(null);
 
-    const formData = new FormData();
-    Object.entries(currentProject).forEach(([key, value]) => {
-      if (key !== '_id') formData.append(key, String(value));
-    });
-
-    if (thumbnailFile) formData.append('thumbnail', thumbnailFile);
-    if (videoFile) formData.append('video', videoFile);
-
-    const method = isEditing ? 'PUT' : 'POST';
-    const url = isEditing
-      ? `${BACKEND_URL}/api/projects/${currentProject._id}`
-      : `${BACKEND_URL}/api/projects`;
-
     try {
-      const response = await fetch(url, { method, credentials: 'include', body: formData });
+      let thumbnailUrl = currentProject.thumbnailUrl;
+      let videoUrl = currentProject.videoUrl;
+
+      if (thumbnailFile) thumbnailUrl = await uploadToCloudinary(thumbnailFile, 'image');
+      if (videoFile) videoUrl = await uploadToCloudinary(videoFile, 'video');
+
+      const payload = {
+        ...currentProject,
+        thumbnailUrl,
+        videoUrl,
+      };
+
+      const method = isEditing ? 'PUT' : 'POST';
+      const url = isEditing
+        ? `${BACKEND_URL}/api/projects/${currentProject._id}`
+        : `${BACKEND_URL}/api/projects`;
+
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      });
+
       if (response.ok) {
         resetFormState();
         onProjectsUpdate();
