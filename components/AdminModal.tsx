@@ -1,6 +1,7 @@
-import React, { useState, useEffect, FormEvent } from 'react';
+import React, { useState, useEffect, FormEvent, ChangeEvent } from 'react';
 import { Project, NewProjectType } from '../types';
-import { X, Loader2, Trash2, Edit, LogOut } from 'lucide-react';
+import { X, Loader2, Trash2, Edit, LogOut, UploadCloud } from 'lucide-react';
+
 
 interface AdminModalProps {
   isOpen: boolean;
@@ -11,6 +12,7 @@ interface AdminModalProps {
   onProjectsUpdate: () => void;
 }
 
+// NOTE: The backend will still provide URLs, so the core types don't change.
 const emptyProject: NewProjectType = {
   title: '',
   year: new Date().getFullYear(),
@@ -31,14 +33,25 @@ const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose, isUnlocked, on
   const [currentProject, setCurrentProject] = useState<NewProjectType & { _id?: string }>(emptyProject);
   const [isEditing, setIsEditing] = useState(false);
 
+  // New state for file uploads
+  const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+
+
+  const resetFormState = () => {
+      setCurrentProject(emptyProject);
+      setIsEditing(false);
+      setThumbnailFile(null);
+      setVideoFile(null);
+      setError(null);
+  };
+
   useEffect(() => {
     if (!isOpen) {
       // Reset state on close
       setPassword('');
-      setError(null);
       setIsVerifying(false);
-      setCurrentProject(emptyProject);
-      setIsEditing(false);
+      resetFormState();
     } else if (isUnlocked) {
       fetchProjects();
     }
@@ -68,22 +81,49 @@ const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose, isUnlocked, on
     setIsVerifying(false);
   };
 
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>, setFile: (file: File | null) => void) => {
+    if (e.target.files && e.target.files[0]) {
+        setFile(e.target.files[0]);
+    }
+  };
+
   const handleProjectFormSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    setError(null);
+
+    const formData = new FormData();
+    // Append all text fields
+    Object.entries(currentProject).forEach(([key, value]) => {
+        if (key !== '_id') { // Don't append the id to the form data body
+             formData.append(key, String(value));
+        }
+    });
+
+    // Append files if they exist
+    if (thumbnailFile) formData.append('thumbnail', thumbnailFile);
+    if (videoFile) formData.append('video', videoFile);
+    
+    // When editing, if no new file is selected, the backend should keep the old URL.
+    // We still send the old URL, and the backend can decide whether to use it or the new file.
+    formData.append('thumbnailUrl', currentProject.thumbnailUrl);
+    formData.append('videoUrl', currentProject.videoUrl);
+
+
     const method = isEditing ? 'PUT' : 'POST';
     const url = isEditing ? `/api/projects/${currentProject._id}` : '/api/projects';
 
     try {
+      // IMPORTANT: When using FormData, DO NOT set the 'Content-Type' header.
+      // The browser will automatically set it to 'multipart/form-data' with the correct boundary.
       const response = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include', // SECURE: Sends the session cookie
-        body: JSON.stringify(currentProject), // SECURE: No password in the body
+        credentials: 'include',
+        body: formData,
       });
+
       if (response.ok) {
-        setCurrentProject(emptyProject);
-        setIsEditing(false);
+        resetFormState();
         onProjectsUpdate(); // Notify App.tsx to refetch
         await fetchProjects(); // Also refetch internally
       } else {
@@ -100,6 +140,8 @@ const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose, isUnlocked, on
   const handleEdit = (project: Project) => {
     setCurrentProject(project);
     setIsEditing(true);
+    setThumbnailFile(null); // Clear previous file selections
+    setVideoFile(null);
     const modalBody = document.querySelector('.overflow-y-auto');
     if (modalBody) modalBody.scrollTo(0, 0);
   };
@@ -110,7 +152,7 @@ const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose, isUnlocked, on
         try {
             const response = await fetch(`/api/projects/${id}`, {
                 method: 'DELETE',
-                credentials: 'include', // SECURE: Sends the session cookie
+                credentials: 'include',
             });
             if (response.ok) {
                 onProjectsUpdate();
@@ -126,11 +168,6 @@ const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose, isUnlocked, on
         }
     }
   };
-  
-  const handleCancelEdit = () => {
-    setCurrentProject(emptyProject);
-    setIsEditing(false);
-  };
 
   if (!isOpen) return null;
 
@@ -141,7 +178,7 @@ const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose, isUnlocked, on
             <h2 className="text-2xl font-bold">
                 {isUnlocked ? 'Admin Panel' : 'Admin Access'}
             </h2>
-            <div>
+            <div className="flex items-center">
                 {isUnlocked && (
                     <button onClick={onLogout} className="text-gray-400 hover:text-white transition-colors flex items-center gap-2 text-sm">
                         <LogOut size={16} />
@@ -173,17 +210,44 @@ const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose, isUnlocked, on
             <div>
               <h3 className="text-xl font-bold mb-4 border-b border-gray-700 pb-2">{isEditing ? 'Edit Project' : 'Add New Project'}</h3>
               <form onSubmit={handleProjectFormSubmit} className="space-y-4 mb-8">
+                 {/* Text Inputs */}
                  <input type="text" placeholder="Title" value={currentProject.title} onChange={(e) => setCurrentProject({ ...currentProject, title: e.target.value })} required className="w-full p-2 bg-[#222] border border-gray-600 rounded text-white" />
                  <input type="number" placeholder="Year" value={currentProject.year} onChange={(e) => setCurrentProject({ ...currentProject, year: parseInt(e.target.value) || new Date().getFullYear() })} required className="w-full p-2 bg-[#222] border border-gray-600 rounded text-white" />
                  <input type="text" placeholder="Role" value={currentProject.role} onChange={(e) => setCurrentProject({ ...currentProject, role: e.target.value })} required className="w-full p-2 bg-[#222] border border-gray-600 rounded text-white" />
                  <textarea placeholder="Synopsis" value={currentProject.synopsis} onChange={(e) => setCurrentProject({ ...currentProject, synopsis: e.target.value })} required className="w-full p-2 bg-[#222] border border-gray-600 rounded text-white h-24" />
-                 <input type="url" placeholder="Video URL (Vimeo/YouTube)" value={currentProject.videoUrl} onChange={(e) => setCurrentProject({ ...currentProject, videoUrl: e.target.value })} required className="w-full p-2 bg-[#222] border border-gray-600 rounded text-white" />
-                 <input type="url" placeholder="Thumbnail URL" value={currentProject.thumbnailUrl} onChange={(e) => setCurrentProject({ ...currentProject, thumbnailUrl: e.target.value })} required className="w-full p-2 bg-[#222] border border-gray-600 rounded text-white" />
+
+                 {/* File Inputs */}
+                <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1">Thumbnail Image</label>
+                    <div className="flex items-center gap-4">
+                        <label className="cursor-pointer bg-gray-600 text-white font-bold py-2 px-4 rounded hover:bg-gray-500 transition-colors flex items-center gap-2">
+                           <UploadCloud size={18}/>
+                           <span>Choose Image</span>
+                           <input type="file" className="hidden" accept="image/*" onChange={(e) => handleFileChange(e, setThumbnailFile)} />
+                        </label>
+                        <span className="text-gray-400 text-sm truncate">{thumbnailFile?.name || (isEditing ? 'Keep current image' : 'No file chosen')}</span>
+                    </div>
+                </div>
+
+                <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1">Project Video</label>
+                    <div className="flex items-center gap-4">
+                       <label className="cursor-pointer bg-gray-600 text-white font-bold py-2 px-4 rounded hover:bg-gray-500 transition-colors flex items-center gap-2">
+                           <UploadCloud size={18}/>
+                           <span>Choose Video</span>
+                           <input type="file" className="hidden" accept="video/*" onChange={(e) => handleFileChange(e, setVideoFile)} />
+                        </label>
+                       <span className="text-gray-400 text-sm truncate">{videoFile?.name || (isEditing ? 'Keep current video' : 'No file chosen')}</span>
+                    </div>
+                </div>
+                 
+                 {error && <p className="text-red-400 text-sm text-center bg-red-900/20 p-2 rounded">{error}</p>}
+                 
                  <div className="flex gap-4 pt-2">
-                    <button type="submit" disabled={isLoading} className="bg-white text-black font-bold py-2 px-6 rounded hover:bg-gray-300 transition-colors flex items-center justify-center">
+                    <button type="submit" disabled={isLoading} className="bg-white text-black font-bold py-2 px-6 rounded hover:bg-gray-300 transition-colors flex items-center justify-center min-w-[140px]">
                         {isLoading ? <Loader2 className="animate-spin" /> : (isEditing ? 'Update Project' : 'Add Project')}
                     </button>
-                    {isEditing && <button type="button" onClick={handleCancelEdit} className="bg-gray-600 text-white font-bold py-2 px-6 rounded hover:bg-gray-500 transition-colors">Cancel</button>}
+                    {isEditing && <button type="button" onClick={resetFormState} className="bg-gray-600 text-white font-bold py-2 px-6 rounded hover:bg-gray-500 transition-colors">Cancel</button>}
                  </div>
               </form>
               
@@ -191,11 +255,11 @@ const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose, isUnlocked, on
               <div className="space-y-3">
                 {projects.map(p => (
                   <div key={p._id} className="flex justify-between items-center bg-[#222] p-3 rounded">
-                    <div>
-                      <p className="font-bold">{p.title} ({p.year})</p>
-                      <p className="text-sm text-gray-400">{p.role}</p>
+                    <div className="truncate pr-4">
+                      <p className="font-bold truncate">{p.title} ({p.year})</p>
+                      <p className="text-sm text-gray-400 truncate">{p.role}</p>
                     </div>
-                    <div className="flex gap-3">
+                    <div className="flex gap-3 flex-shrink-0">
                       <button onClick={() => handleEdit(p)} className="text-blue-400 hover:text-blue-300"><Edit size={18}/></button>
                       <button onClick={() => handleDelete(p._id)} className="text-red-400 hover:text-red-300"><Trash2 size={18}/></button>
                     </div>

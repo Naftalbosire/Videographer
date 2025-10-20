@@ -13,6 +13,7 @@ import session from 'express-session';
 import cookieParser from 'cookie-parser';
 
 dotenv.config();
+console.log("Loaded ADMIN_PASSWORD:", process.env.ADMIN_PASSWORD ? "[DEFINED]" : "[NOT DEFINED]");
 
 const app = express();
 const PORT = process.env.PORT || 5001;
