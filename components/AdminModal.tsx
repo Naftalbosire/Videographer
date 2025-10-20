@@ -106,13 +106,14 @@ const AdminModal: React.FC<AdminModalProps> = ({
 
     try {
       const response = await fetch(url, { method, credentials: 'include', body: formData });
+      const data = await response.json();
+
       if (response.ok) {
         resetFormState();
         onProjectsUpdate();
         await fetchProjects();
       } else {
-        const errData = await response.json();
-        setError(errData.message || 'Failed to save project.');
+        setError(data.message || 'Failed to save project.');
       }
     } catch {
       setError('An error occurred while saving the project.');

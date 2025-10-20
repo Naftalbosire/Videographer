@@ -5,6 +5,8 @@ import dotenv from 'dotenv';
 import session from 'express-session';
 import cookieParser from 'cookie-parser';
 import multer from 'multer';
+import { v2 as cloudinary } from 'cloudinary';
+import { CloudinaryStorage } from 'multer-storage-cloudinary';
 
 dotenv.config();
 console.log("Loaded ADMIN_PASSWORD:", process.env.ADMIN_PASSWORD ? "[DEFINED]" : "[NOT DEFINED]");
@@ -17,16 +19,13 @@ const whitelist = [
   'http://localhost:3000',
   'http://localhost:5173',
   'http://127.0.0.1:5173',
-  'https://lucykadii.vercel.app', // Deployed frontend
+  'https://lucykadii.vercel.app',
 ];
 
 app.use(cors({
   origin: function (origin, callback) {
-    if (!origin || whitelist.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
+    if (!origin || whitelist.indexOf(origin) !== -1) callback(null, true);
+    else callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
 }));
@@ -50,7 +49,7 @@ app.use(session({
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: process.env.NODE_ENV === "production" ? 'none' : 'lax',
-    maxAge: 1000 * 60 * 60 * 24, // 1 day
+    maxAge: 1000 * 60 * 60 * 24,
   }
 }));
 
@@ -84,6 +83,27 @@ const projectSchema = new mongoose.Schema({
 
 const Project = mongoose.model('Project', projectSchema);
 
+// --- Cloudinary Configuration ---
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+const storage = new CloudinaryStorage({
+  cloudinary,
+  params: async (req, file) => {
+    if (file.mimetype.startsWith('image/')) {
+      return { folder: 'project-thumbnails', resource_type: 'image' };
+    } else if (file.mimetype.startsWith('video/')) {
+      return { folder: 'project-videos', resource_type: 'video' };
+    }
+    return { folder: 'others' };
+  },
+});
+
+const upload = multer({ storage });
+
 // --- Admin Password ---
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD?.trim();
 if (!ADMIN_PASSWORD) {
@@ -93,15 +113,9 @@ if (!ADMIN_PASSWORD) {
 
 // --- Authentication Middleware ---
 const authMiddleware = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-  if (req.session && req.session.isAdmin) {
-    next();
-  } else {
-    res.status(401).json({ message: 'Unauthorized: You must be logged in.' });
-  }
+  if (req.session && req.session.isAdmin) next();
+  else res.status(401).json({ message: 'Unauthorized: You must be logged in.' });
 };
-
-// --- File Upload Setup ---
-const upload = multer({ dest: 'uploads/' });
 
 // --- Admin Routes ---
 app.post('/api/admin/login', (req, res) => {
@@ -136,21 +150,53 @@ app.get('/api/projects', async (req, res) => {
   }
 });
 
-// --- Protected Project Routes ---
-app.post('/api/projects', authMiddleware, async (req, res) => {
+// --- Protected Project Routes with Cloudinary Upload ---
+app.post('/api/projects', authMiddleware, upload.fields([
+  { name: 'thumbnail', maxCount: 1 },
+  { name: 'video', maxCount: 1 },
+]), async (req, res) => {
   try {
-    const newProject = new Project(req.body);
+    const { title, year, role, synopsis } = req.body;
+
+    if (!req.files || !('thumbnail' in req.files) || !('video' in req.files)) {
+      return res.status(400).json({ message: 'Thumbnail and video files are required.' });
+    }
+
+    const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+    const thumbnailUrl = files.thumbnail[0].path;
+    const videoUrl = files.video[0].path;
+
+    const newProject = new Project({ title, year, role, synopsis, thumbnailUrl, videoUrl });
     await newProject.save();
+
     res.status(201).json(newProject);
   } catch (error) {
     res.status(400).json({ message: 'Error creating project', error });
   }
 });
 
-app.put('/api/projects/:id', authMiddleware, async (req, res) => {
+app.put('/api/projects/:id', authMiddleware, upload.fields([
+  { name: 'thumbnail', maxCount: 1 },
+  { name: 'video', maxCount: 1 },
+]), async (req, res) => {
   try {
-    const updatedProject = await Project.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    const { title, year, role, synopsis } = req.body;
+
+    const updateData: any = { title, year, role, synopsis };
+
+    if (req.files && 'thumbnail' in req.files) {
+      const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+      updateData.thumbnailUrl = files.thumbnail[0].path;
+    }
+
+    if (req.files && 'video' in req.files) {
+      const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+      updateData.videoUrl = files.video[0].path;
+    }
+
+    const updatedProject = await Project.findByIdAndUpdate(req.params.id, updateData, { new: true });
     if (!updatedProject) return res.status(404).json({ message: 'Project not found' });
+
     res.json(updatedProject);
   } catch (error) {
     res.status(400).json({ message: 'Error updating project', error });
