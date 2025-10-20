@@ -137,24 +137,9 @@ app.get('/api/projects', async (req, res) => {
 });
 
 // --- Protected Project Routes ---
-app.post('/api/projects', authMiddleware, upload.fields([{ name: 'thumbnail' }, { name: 'video' }]), async (req, res) => {
+app.post('/api/projects', authMiddleware, async (req, res) => {
   try {
-    const { title, year, role, synopsis } = req.body;
-    const files = req.files as { [fieldname: string]: Express.Multer.File[] };
-
-    if (!files || !files['thumbnail']?.[0] || !files['video']?.[0]) {
-      return res.status(400).json({ message: 'Thumbnail and video are required' });
-    }
-
-    const newProject = new Project({
-      title,
-      year,
-      role,
-      synopsis,
-      thumbnailUrl: files['thumbnail'][0].path,
-      videoUrl: files['video'][0].path,
-    });
-
+    const newProject = new Project(req.body);
     await newProject.save();
     res.status(201).json(newProject);
   } catch (error) {
@@ -162,19 +147,10 @@ app.post('/api/projects', authMiddleware, upload.fields([{ name: 'thumbnail' }, 
   }
 });
 
-app.put('/api/projects/:id', authMiddleware, upload.fields([{ name: 'thumbnail' }, { name: 'video' }]), async (req, res) => {
+app.put('/api/projects/:id', authMiddleware, async (req, res) => {
   try {
-    const { title, year, role, synopsis } = req.body;
-    const files = req.files as { [fieldname: string]: Express.Multer.File[] };
-
-    const updateData: any = { title, year, role, synopsis };
-
-    if (files['thumbnail']?.[0]) updateData.thumbnailUrl = files['thumbnail'][0].path;
-    if (files['video']?.[0]) updateData.videoUrl = files['video'][0].path;
-
-    const updatedProject = await Project.findByIdAndUpdate(req.params.id, updateData, { new: true });
+    const updatedProject = await Project.findByIdAndUpdate(req.params.id, req.body, { new: true });
     if (!updatedProject) return res.status(404).json({ message: 'Project not found' });
-
     res.json(updatedProject);
   } catch (error) {
     res.status(400).json({ message: 'Error updating project', error });
